@@ -376,12 +376,24 @@ function getMainHTML() {
         }
         
         function toggleFullscreen() {
+            const header = document.getElementById('header');
+            
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
+                header.style.display = 'none';
             } else {
                 document.exitFullscreen();
+                header.style.display = 'flex';
             }
         }
+        
+        // Listen for fullscreen changes (in case user exits with ESC)
+        document.addEventListener('fullscreenchange', () => {
+            const header = document.getElementById('header');
+            if (!document.fullscreenElement) {
+                header.style.display = 'flex';
+            }
+        });
         
         function openAboutBlank() {
             const aboutBlankWindow = window.open('about:blank', '_blank');
@@ -428,3 +440,4 @@ This version:
 ✅ Injects interception script into HTML only
 ✅ Handles relative URLs correctly
 ✅ Auto-intercepts game popups
+

@@ -1,0 +1,9 @@
+name = "cloudmoon-inplay"
+account_id = "" # <-- Add your Cloudflare account ID
+workers_dev = true
+compatibility_date = "2026-01-21"
+main = "worker.js"
+
+[env.production]
+route = "" # Optionally specify the route
+zone_id = "" # Optionally specify the zone ID

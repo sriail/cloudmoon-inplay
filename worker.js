@@ -1,4 +1,4 @@
-// Cloudflare Worker - CloudMoon Proxy with Full Shadow DOM Protection
+// Cloudflare Worker - CloudMoon Proxy with Tab Cloaking
 addEventListener('fetch', event => {
     event.respondWith(handleRequest(event.request));
   });
@@ -24,17 +24,14 @@ addEventListener('fetch', event => {
     let targetURL;
     
     if (url.pathname.startsWith('/proxy/')) {
-      // Direct proxy path
       const encodedURL = url.pathname.replace('/proxy/', '');
       targetURL = decodeURIComponent(encodedURL);
     } else {
-      // Relative path - proxy to CloudMoon
       targetURL = 'https://web.cloudmoonapp.com' + url.pathname + url.search;
     }
     
     console.log('Proxying:', targetURL);
     
-    // Create headers, removing problematic ones
     const headers = new Headers(request.headers);
     headers.set('Host', new URL(targetURL).host);
     headers.delete('cf-connecting-ip');
@@ -42,7 +39,10 @@ addEventListener('fetch', event => {
     headers.delete('x-forwarded-proto');
     headers.delete('x-real-ip');
     
-    // Make the request
+    if (!headers.has('User-Agent')) {
+      headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+    }
+    
     const proxyRequest = new Request(targetURL, {
       method: request.method,
       headers: headers,
@@ -52,41 +52,38 @@ addEventListener('fetch', event => {
     
     let response = await fetch(proxyRequest);
     
-    // Create new response with modified headers
     const newHeaders = new Headers(response.headers);
     newHeaders.set('Access-Control-Allow-Origin', '*');
+    newHeaders.set('Access-Control-Allow-Methods', '*');
+    newHeaders.set('Access-Control-Allow-Headers', '*');
+    newHeaders.set('Access-Control-Allow-Credentials', 'true');
     newHeaders.delete('Content-Security-Policy');
     newHeaders.delete('X-Frame-Options');
+    newHeaders.delete('Frame-Options');
     
     const contentType = response.headers.get('Content-Type') || '';
     
-    // Only modify HTML responses
     if (contentType.includes('text/html')) {
       let html = await response.text();
       
-      // Inject interception script
       const injectionScript = `
         <script>
           (function() {
             console.log('CloudMoon Interceptor Injected');
             
-            // Override window.open
             const originalOpen = window.open;
             window.open = function(url, target, features) {
               console.log('Intercepted window.open:', url);
               
-              // Intercept game URLs
               if (url && url.includes('run-site')) {
                 console.log('Game URL detected!');
                 
-                // Tell parent to load the game
                 if (window.parent && window.parent !== window) {
                   window.parent.postMessage({
                     type: 'LOAD_GAME',
                     url: url
                   }, '*');
                 } else {
-                  // Load in current window
                   window.location.href = url;
                 }
                 
@@ -97,7 +94,6 @@ addEventListener('fetch', event => {
                 };
               }
               
-              // Allow other popups (Google auth, etc)
               return originalOpen.call(this, url, target, features);
             };
             
@@ -105,7 +101,6 @@ addEventListener('fetch', event => {
         </script>
       `;
       
-      // Inject the script
       if (html.includes('<head>')) {
         html = html.replace('<head>', '<head>' + injectionScript);
       } else {
@@ -119,7 +114,6 @@ addEventListener('fetch', event => {
       });
     }
     
-    // For non-HTML, just return with CORS headers
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
@@ -133,7 +127,8 @@ addEventListener('fetch', event => {
   <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>CloudMoon Proxy</title>
+      <title>CloudMoon InPlay</title>
+      <link rel="icon" id="favicon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>">
       <style>
           * {
               margin: 0;
@@ -207,6 +202,10 @@ addEventListener('fetch', event => {
               display: none;
           }
           
+          #tab-cloak-btn.active {
+              background: #238636;
+          }
+          
           .icon {
               width: 16px;
               height: 16px;
@@ -266,9 +265,16 @@ addEventListener('fetch', event => {
                   <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5"/>
                   </svg>
-                  CloudMoon Proxy
+                  CloudMoon InPlay
               </div>
-              <div id="status">Loading CloudMoon...</div>
+              <div id="status">Loading...</div>
+              <button id="tab-cloak-btn" onclick="toggleTabCloak()">
+                  <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                  </svg>
+                  Tab Cloak
+              </button>
               <button id="back-btn" onclick="goBack()">
                   <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
@@ -298,7 +304,7 @@ addEventListener('fetch', event => {
       </div>
       
       <div id="toast">
-          Game intercepted! Loading...
+          Loading your Game / App...
       </div>
   
       <script>
@@ -306,32 +312,76 @@ addEventListener('fetch', event => {
           const status = document.getElementById('status');
           const backBtn = document.getElementById('back-btn');
           const toast = document.getElementById('toast');
+          const tabCloakBtn = document.getElementById('tab-cloak-btn');
           
           let isShowingGame = false;
           let mainURL = '/web.cloudmoonapp.com/';
           let shadowRoot = null;
           let currentIframe = null;
+          let isCloaked = false;
           
-          // Create shadow DOM iframe (used for BOTH home and games)
+          // Original title and favicon
+          const originalTitle = 'CloudMoon InPlay';
+          const originalFavicon = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>";
+          
+          // Google Classroom cloak
+          const cloakedTitle = 'Classes';
+          const cloakedFavicon = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAA7EAAAOxAGVKw4bAAADW0lEQVRYhb2XT0hUURTGf+fNm+bVNP4ZxRhKAxeVBLYoaBOEEkTQpk0EbVpEELRo1aKgRYQtItrUKqJ/i6BVRBCUQYsWYf9QMwoz0cxCZ3TmzX1vbgtnHI3RmXl64MPLvY9zv3vOveee71F+RMvuQ/d2CIwClh48WN/98U0+TwVA6e17dwM3gb1Axt8FjgEnwnqmNo9n/xdA6Z1HTUAncAzY5gMAnAL6gMOSqRsA7PkuTu+9d3eBl8BeYOs6q54CuoCj3hON5yXbsI6HL4BbwGHW//gAXcBR741G5QdwyJDyYpAgmNz0VztTqD87Zt7+vBiMbKC0vPZc4XmJf8d0z0pP/tPYr4s3PgwvADcAbxOxXoCqc9c3FZ9dHAcmCtWuO97w8q3+H6N/D3WlXqSmawl6OoFzQAl/SVXHh9oj/UOnL4HSpF6JPBGAW8Bp4B5wsEi+sxnoTRpgKzBayHj92r0twFRBv+cBFHi4kZPtCthRACtJAQSwOQGAwvV8IMkABjBlLQFYOgmAEdsaQBpbBEsCUDlgpwFMJ+RYAL6XAnCiWMFCfhqoAFbfibDzAIMvB4ZfFwigb8EGLnjPNw54zzU2A0PeC00HclXCRd+QUur3Pdu/tqkXwLNc7TQ1bU8AXT//qbDgfk9K5fKqp+E7sL+qqvofVYAL7nWnMTqC68D9X1Wkp+EHcGD1fSXi+/U0HAQe+SXIC59cZAA+/noBYlTPtdYnADDvvdCcD4C+S/feAH1/2P8ZePSrHf4OQHe+AJxwO9sTcFt+L5ALINfXuqTUMeBbvu6bC2AOOJHv8/vWE61jgj0J/AWvJz4Am8D5YgAorxjXfkD6/2M6rwnvhaZ2XdmGd+4HgZ68pJ/sePluEBjxnm9auw82HUCpu/eUUk/x++K/dsSGx/3fDrjgTM8SrWZA+f05rydaFwAclVx9T96K6PW0PZBE9fy67uN8vhHlx5t8Zyh83vwL5V+RTBF9wWy4AAC+t1rPAyfxu9S/WgC4o5R6opXeBNz0u9l15Xvjhc/yBYgAAMGU7/dRG1Dpr/8B+BLoO9yzYzp4f7MnXxPOC0Cp1s5ub5bQHlyAemCHP14KfAD6J/SJ5uDtpc+FeP8E0sLYXdZbKF8AAAAASUVORK5CYII=';
+          
+          const SANDBOX_HOME = 'allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts allow-downloads allow-pointer-lock';
+          const SANDBOX_GAME = 'allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-downloads allow-pointer-lock allow-top-navigation-by-user-activation';
+          const ALLOW_PERMISSIONS = 'accelerometer; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; clipboard-read; clipboard-write; xr-spatial-tracking; gamepad; web-share';
+          
+          function toggleTabCloak() {
+              isCloaked = !isCloaked;
+              
+              if (isCloaked) {
+                  // Enable cloak - Google Classroom
+                  document.title = cloakedTitle;
+                  document.getElementById('favicon').href = cloakedFavicon;
+                  tabCloakBtn.classList.add('active');
+                  showToast('Tab cloaked as Google Classroom');
+              } else {
+                  // Disable cloak - restore original
+                  document.title = originalTitle;
+                  document.getElementById('favicon').href = originalFavicon;
+                  tabCloakBtn.classList.remove('active');
+                  showToast('Tab cloak disabled');
+              }
+          }
+          
+          function showToast(message) {
+              toast.textContent = message;
+              toast.style.display = 'block';
+              setTimeout(() => {
+                  toast.style.display = 'none';
+              }, 2000);
+          }
+          
           function createShadowFrame(url, isGame = false) {
               frameContainer.innerHTML = '';
               
-              // Create shadow host
               const shadowHost = document.createElement('div');
               shadowHost.style.width = '100%';
               shadowHost.style.height = '100%';
               frameContainer.appendChild(shadowHost);
               
-              // Create closed shadow root (extensions can't access)
               shadowRoot = shadowHost.attachShadow({ mode: 'closed' });
               
-              // Create iframe inside shadow DOM
               const iframe = document.createElement('iframe');
               iframe.style.width = '100%';
               iframe.style.height = '100%';
               iframe.style.border = 'none';
               iframe.style.margin = '0';
               iframe.style.padding = '0';
+              iframe.style.display = 'block';
+              
+              const sandboxAttr = isGame ? SANDBOX_GAME : SANDBOX_HOME;
+              iframe.setAttribute('sandbox', sandboxAttr);
+              iframe.setAttribute('allow', ALLOW_PERMISSIONS);
+              iframe.setAttribute('title', isGame ? 'Game Preview' : 'CloudMoon Preview');
+              iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
+              
               iframe.src = url;
               
               shadowRoot.appendChild(iframe);
@@ -339,14 +389,22 @@ addEventListener('fetch', event => {
               
               iframe.addEventListener('load', () => {
                   if (isGame) {
-                      status.textContent = 'Game running';
+                      status.textContent = 'Game / App running';
+                      console.log('%c Game loaded with full permissions', 'color: #10b981; font-weight: bold;');
                   } else {
                       status.textContent = 'CloudMoon loaded';
                   }
                   focusIframe();
               });
               
-              console.log('Shadow DOM created - Extensions blocked!');
+              iframe.addEventListener('error', (e) => {
+                  console.error('Iframe error:', e);
+                  status.textContent = 'Error loading - check console, reload, or try again Later';
+              });
+              
+              console.log('%c Shadow DOM Created', 'color: #10b981; font-weight: bold;');
+              console.log('Sandbox:', sandboxAttr);
+              console.log('Allow:', ALLOW_PERMISSIONS);
           }
           
           function focusIframe() {
@@ -356,23 +414,20 @@ addEventListener('fetch', event => {
                       try {
                           currentIframe.contentWindow.focus();
                       } catch (e) {
-                          // Cross-origin, can't access contentWindow
+                          // Cross-origin, expected
                       }
                   }
               }, 100);
           }
           
-          // Initialize with shadow DOM on load
           createShadowFrame(mainURL, false);
           
-          // Refocus iframe when clicking on the page
           document.addEventListener('click', (e) => {
               if (currentIframe && e.target !== currentIframe) {
                   focusIframe();
               }
           });
           
-          // Listen for game URLs from iframe
           window.addEventListener('message', (event) => {
               if (event.data && event.data.type === 'LOAD_GAME') {
                   const gameUrl = event.data.url;
@@ -382,15 +437,11 @@ addEventListener('fetch', event => {
           });
           
           function loadGame(url) {
-              toast.style.display = 'block';
-              setTimeout(() => {
-                  toast.style.display = 'none';
-              }, 3000);
+              showToast('Loading your Game / App...');
               
-              status.textContent = 'Loading game...';
-              console.log('Original intercepted URL:', url);
+              status.textContent = 'Loading your Game / App...';
+              console.log('Original URL:', url);
               
-              // Replace worker domain with CloudMoon domain
               let fixedURL = url;
               const workerDomain = window.location.origin;
               
@@ -398,10 +449,9 @@ addEventListener('fetch', event => {
                   fixedURL = url.replace(workerDomain, 'https://web.cloudmoonapp.com');
               }
               
-              console.log('Fixed game URL (direct, no proxy):', fixedURL);
-              console.log('Loading in Shadow DOM to prevent extension detection');
+              console.log('%c Loading game with FULL sandbox permissions', 'color: #667eea; font-weight: bold;');
+              console.log('Game URL:', fixedURL);
               
-              // Recreate shadow DOM iframe for the game
               createShadowFrame(fixedURL, true);
               
               isShowingGame = true;
@@ -409,20 +459,20 @@ addEventListener('fetch', event => {
           }
           
           function goBack() {
-              // Recreate shadow DOM with main CloudMoon URL
               createShadowFrame(mainURL, false);
-              
               isShowingGame = false;
               backBtn.style.display = 'none';
               status.textContent = 'Loading CloudMoon...';
           }
           
           function reloadFrame() {
-              // Reload current shadow iframe
               const iframe = shadowRoot.querySelector('iframe');
               if (iframe) {
                   const currentUrl = iframe.src;
-                  iframe.src = currentUrl;
+                  iframe.src = 'about:blank';
+                  setTimeout(() => {
+                      iframe.src = currentUrl;
+                  }, 50);
               }
           }
           
@@ -438,7 +488,6 @@ addEventListener('fetch', event => {
               }
           }
           
-          // Listen for fullscreen changes (in case user exits with ESC)
           document.addEventListener('fullscreenchange', () => {
               const header = document.getElementById('header');
               if (!document.fullscreenElement) {
@@ -462,6 +511,9 @@ addEventListener('fetch', event => {
               iframe.style.border = 'none';
               iframe.style.margin = '0';
               iframe.style.padding = '0';
+              
+              iframe.setAttribute('sandbox', SANDBOX_GAME);
+              iframe.setAttribute('allow', ALLOW_PERMISSIONS);
               iframe.src = window.location.href;
               
               shadow.appendChild(iframe);
@@ -472,25 +524,9 @@ addEventListener('fetch', event => {
           }
           
           console.log('%c CloudMoon Proxy Active', 'color: #667eea; font-size: 18px; font-weight: bold;');
-          console.log('%c Full Shadow DOM Protection Enabled', 'color: #10b981; font-size: 14px; font-weight: bold;');
-          console.log('%c All content hidden from extensions', 'color: #10b981; font-size: 12px;');
+          console.log('%c GoGuardian Bypass: CodeSandbox Method', 'color: #10b981; font-size: 14px; font-weight: bold;');
+          console.log('%c Shadow DOM + Smart Sandbox + Full Permissions', 'color: #10b981; font-size: 12px;');
       </script>
   </body>
   </html>`;
   }
-  
-  /*
-  DEPLOYMENT:
-  1. Go to Cloudflare Workers dashboard
-  2. Create new Worker
-  3. Paste this code
-  4. Deploy
-  
-  FULL PROTECTION MODE:
-  ✅ CloudMoon homepage loads in CLOSED shadow DOM
-  ✅ Intercepted games load in CLOSED shadow DOM
-  ✅ Chrome extensions CANNOT detect ANY iframes
-  ✅ Everything is protected from the start
-  ✅ Status always shows "🔒 PROTECTED"
-  ✅ Back button recreates shadow DOM with home URL
-  */

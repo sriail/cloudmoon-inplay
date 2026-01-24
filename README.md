@@ -23,9 +23,8 @@ After that, you can use the upper navbar to help you navigate, cloak the site wi
 
 ## Deploy
 
-To deploy your owen cloudmoon worker, click the deploy to cloudflare button, for maxamum security, it is recomended that it is embeded into another site using this code (blocks extentions with restrictive content policies). Be shure to chage ```html  <full-page-frame
-      src="Worker"  <!-- Replace with your own proxy / Cloudflare Worker -->
-    ></full-page-frame> ``` With your Worker
+To deploy your owen cloudmoon worker, click the deploy to cloudflare button, for maxamum security, it is recomended that it is embeded into another site using this code (blocks extentions with restrictive content policies). Be shure to chage 
+``` src="Worker" ``` With your Worker (example URl : milefalencentfog47a.johndoe.workers.dev )
 
 ```html
 <!DOCTYPE html>

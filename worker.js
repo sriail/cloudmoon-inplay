@@ -124,7 +124,9 @@ addEventListener('fetch', event => {
     try {
       const parsed = new URL(url);
       for (const domain of GOOGLE_AUTH_DOMAINS) {
-        if (parsed.hostname === domain || parsed.hostname.endsWith('.' + domain)) {
+        // Check for exact match OR proper subdomain (preceded by a dot)
+        if (parsed.hostname === domain || 
+            (parsed.hostname.endsWith('.' + domain) && parsed.hostname.length > domain.length + 1)) {
           return workerOrigin + '/gauth/' + parsed.hostname + parsed.pathname + parsed.search;
         }
       }
@@ -134,17 +136,22 @@ addEventListener('fetch', event => {
     return url;
   }
   
+  // Pre-compiled regex patterns for URL rewriting
+  const GOOGLE_URL_PATTERNS = GOOGLE_AUTH_DOMAINS.map(domain => ({
+    domain,
+    https: new RegExp('https://' + domain.replace(/\./g, '\\.'), 'g'),
+    protocolRelative: new RegExp('(["\'])//(' + domain.replace(/\./g, '\\.') + ')', 'g')
+  }));
+
   // Rewrite content to redirect Google URLs through proxy
   function rewriteGoogleContent(content, workerOrigin) {
-    // Replace Google auth domain URLs with proxied versions
-    for (const domain of GOOGLE_AUTH_DOMAINS) {
+    // Replace Google auth domain URLs with proxied versions using pre-compiled patterns
+    for (const pattern of GOOGLE_URL_PATTERNS) {
       // Replace https://domain URLs
-      const httpsPattern = new RegExp('https://' + domain.replace(/\./g, '\\.'), 'g');
-      content = content.replace(httpsPattern, workerOrigin + '/gauth/' + domain);
+      content = content.replace(pattern.https, workerOrigin + '/gauth/' + pattern.domain);
       
-      // Replace //domain URLs (protocol-relative)
-      const protocolRelPattern = new RegExp('"//' + domain.replace(/\./g, '\\.'), 'g');
-      content = content.replace(protocolRelPattern, '"' + workerOrigin + '/gauth/' + domain);
+      // Replace //domain URLs (protocol-relative) with any quote type
+      content = content.replace(pattern.protocolRelative, '$1' + workerOrigin + '/gauth/' + pattern.domain);
     }
     return content;
   }
@@ -220,13 +227,19 @@ addEventListener('fetch', event => {
               'www.gstatic.com'
             ];
             
+            // Helper function to check if hostname matches a Google domain (exact or subdomain)
+            function isGoogleDomain(hostname, domain) {
+              return hostname === domain || 
+                     (hostname.endsWith('.' + domain) && hostname.length > domain.length + 1);
+            }
+            
             // Helper function to rewrite Google URLs
             function rewriteGoogleUrl(url) {
               if (!url) return url;
               try {
                 const parsed = new URL(url, window.location.href);
                 for (const domain of GOOGLE_DOMAINS) {
-                  if (parsed.hostname === domain || parsed.hostname.endsWith('.' + domain)) {
+                  if (isGoogleDomain(parsed.hostname, domain)) {
                     return WORKER_ORIGIN + '/gauth/' + parsed.hostname + parsed.pathname + parsed.search;
                   }
                 }
@@ -281,7 +294,8 @@ addEventListener('fetch', event => {
                 if (typeof input === 'string') {
                   return originalFetch.call(this, rewrittenUrl, init);
                 } else {
-                  return originalFetch.call(this, new Request(rewrittenUrl, input), init);
+                  // When input is a Request, pass init options separately
+                  return originalFetch.call(this, rewrittenUrl, init);
                 }
               }
               return originalFetch.call(this, input, init);

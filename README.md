@@ -9,16 +9,30 @@ Cloudmoon InPlay is a simple site that proxies, hides, and loads cloudmoon in a 
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/sriail/Cloudmoon-InPlay)
 
+## How It Works - Two-Phase System
+
+CloudMoon InPlay uses a **two-phase system** to allow both Google Sign-In AND game playing:
+
+### Phase 1: Direct Mode (Sign In)
+When you first open the site, it loads CloudMoon **directly** (not through the proxy). This allows Google Sign-In to work normally because the browser connects directly to `web.cloudmoonapp.com`.
+
+### Phase 2: Proxy Mode (Play Games)
+After signing in, click the **"Enable Proxy"** button to switch to proxy mode. This routes all traffic through the Cloudflare Worker, which:
+- Bypasses network restrictions
+- Injects game interception code so games open in the same window
+- Keeps you logged in (session persists)
+
 ## Use
 
-> [!IMPORTANT]
-> **Google Sign-In does not work through the proxy** due to Google's OAuth 2.0 origin validation. The proxy automatically hides the Google Sign-In button to prevent errors. You must use **email and password** authentication instead.
->
-> To set up email/password login: Register your CloudMoon account at home (on the official site) using Google, then go to Settings and set a password. You can then use that email/password to sign in through this proxy.
+1. **Sign in first**: Use Google Sign-In while in Direct Mode (green "Enable Proxy" button)
+2. **Enable Proxy**: Click the "Enable Proxy" button to switch to Proxy Mode (purple "Proxy Mode" button)
+3. **Play games**: Browse and click on games - they will open in the same window
+4. **Use the Back button**: Return to the game library after playing
 
-Once you sign in, you can click and play games in Cloudmoons library!
-After that, you can use the upper navbar to help you navigate, cloak the site with About:Blank, and reload the site with the reload button.
-
+> [!TIP]
+> The status bar shows which mode you're in:
+> - "Direct Mode - sign in works!" = Use Google Sign-In here
+> - "Proxy Mode - games work!" = Play games here
 
 > [!NOTE]
 > When Cloudmoon tries to open a new Tab, it will open in the central iframe to avoid being blocked.

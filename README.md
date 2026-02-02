@@ -11,8 +11,8 @@ Cloudmoon InPlay is a simple site that proxies, hides, and loads cloudmoon in a 
 
 ## Use
 
-> [!IMPORTANT]
-> Because of google's authentication policies, the google sign in button will NOT WORK. You must hit sign in with email and password instead. You will also need to register your cloudmoon account at home with google and set a password in settings.
+> [!NOTE]
+> Google Sign-In now opens in a separate popup window (not proxied). This allows you to authenticate directly with Google. Make sure to allow popups for the site when signing in with Google.
 
 Once you sign in, you can click and play games in Cloudmoons library!
 After that, you can use the upper navbar to help you navigate, cloak the site with About:Blank, and reload the site with the reload button.

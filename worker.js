@@ -103,43 +103,47 @@ addEventListener('fetch', event => {
             
             // Hide Google Sign-In buttons and show alternative message
             // Google OAuth doesn't work through proxies due to origin validation
+            
+            // Selectors for Google Sign-In elements (used in CSS and JS)
+            const GOOGLE_SIGNIN_SELECTORS = [
+              '[data-client_id]',
+              '.g_id_signin',
+              '.gsi-material-button',
+              'div[id^="g_id_"]',
+              'iframe[src*="accounts.google.com"]',
+              'iframe[src*="gsi/button"]',
+              '[aria-label*="Google"]',
+              'button[data-provider="google"]',
+              '.google-sign-in-button',
+              '.google-login-btn'
+            ];
+            
             function hideGoogleSignIn() {
               // Add CSS to hide Google Sign-In elements
               const style = document.createElement('style');
               style.textContent = \`
                 /* Hide Google Sign-In button and related elements */
-                [data-client_id], 
-                .g_id_signin,
-                .gsi-material-button,
-                div[id^="g_id_"],
-                iframe[src*="accounts.google.com"],
-                iframe[src*="gsi/button"],
-                [aria-label*="Google"],
-                button[data-provider="google"],
-                .google-sign-in-button,
-                .google-login-btn {
+                \${GOOGLE_SIGNIN_SELECTORS.join(', ')} {
                   display: none !important;
                 }
               \`;
               document.head.appendChild(style);
+              
+              // Build selector string for querySelectorAll
+              const selectorString = GOOGLE_SIGNIN_SELECTORS.join(', ');
               
               // Find and hide any Google Sign-In buttons that might appear dynamically
               const observer = new MutationObserver((mutations) => {
                 for (const mutation of mutations) {
                   for (const node of mutation.addedNodes) {
                     if (node.nodeType === 1) {
-                      // Check if it's a Google Sign-In element
-                      if (node.matches && (
-                        node.matches('[data-client_id]') ||
-                        node.matches('.g_id_signin') ||
-                        node.matches('.gsi-material-button') ||
-                        node.matches('iframe[src*="accounts.google.com"]')
-                      )) {
+                      // Check if the node itself matches
+                      if (node.matches && node.matches(selectorString)) {
                         node.style.display = 'none';
                       }
                       // Also check children
-                      const googleElements = node.querySelectorAll && node.querySelectorAll('[data-client_id], .g_id_signin, .gsi-material-button, iframe[src*="accounts.google.com"]');
-                      if (googleElements) {
+                      if (node.querySelectorAll) {
+                        const googleElements = node.querySelectorAll(selectorString);
                         googleElements.forEach(el => el.style.display = 'none');
                       }
                     }
@@ -147,10 +151,14 @@ addEventListener('fetch', event => {
                 }
               });
               
-              observer.observe(document.body || document.documentElement, {
-                childList: true,
-                subtree: true
-              });
+              // Wait for body to be available before observing
+              const targetNode = document.body || document.documentElement;
+              if (targetNode) {
+                observer.observe(targetNode, {
+                  childList: true,
+                  subtree: true
+                });
+              }
               
               console.log('Google Sign-In elements hidden - use email/password to sign in');
             }

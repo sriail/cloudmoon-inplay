@@ -1,21 +1,7 @@
-// Cloudflare Worker - CloudMoon Proxy with Tab Cloaking and Google Sign-In Support
+// Cloudflare Worker - CloudMoon Proxy with Tab Cloaking
 addEventListener('fetch', event => {
     event.respondWith(handleRequest(event.request));
   });
-  
-  // Google domains that need to be proxied for sign-in
-  const GOOGLE_AUTH_DOMAINS = [
-    'accounts.google.com',
-    'oauth2.googleapis.com',
-    'www.googleapis.com',
-    'apis.google.com',
-    'ssl.gstatic.com',
-    'www.gstatic.com',
-    'fonts.googleapis.com',
-    'fonts.gstatic.com',
-    'lh3.googleusercontent.com',
-    'googleusercontent.com'
-  ];
   
   async function handleRequest(request) {
     const url = new URL(request.url);
@@ -27,138 +13,12 @@ addEventListener('fetch', event => {
       });
     }
     
-    // Handle Google auth proxy routes
-    if (url.pathname.startsWith('/gauth/')) {
-      return proxyGoogleAuth(request);
-    }
-    
     // Proxy everything else to CloudMoon
     return proxyCloudMoon(request);
   }
   
-  // Proxy Google authentication requests
-  async function proxyGoogleAuth(request) {
-    const url = new URL(request.url);
-    const workerOrigin = url.origin;
-    
-    // Extract the target Google URL from the path
-    // Format: /gauth/domain.com/path
-    const pathParts = url.pathname.replace('/gauth/', '').split('/');
-    const targetDomain = pathParts[0];
-    const targetPath = '/' + pathParts.slice(1).join('/') + url.search;
-    const targetURL = 'https://' + targetDomain + targetPath;
-    
-    console.log('Proxying Google Auth:', targetURL);
-    
-    const headers = new Headers(request.headers);
-    headers.set('Host', targetDomain);
-    headers.set('Origin', 'https://' + targetDomain);
-    headers.set('Referer', 'https://' + targetDomain + '/');
-    headers.delete('cf-connecting-ip');
-    headers.delete('cf-ray');
-    headers.delete('x-forwarded-proto');
-    headers.delete('x-real-ip');
-    
-    if (!headers.has('User-Agent')) {
-      headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
-    }
-    
-    const proxyRequest = new Request(targetURL, {
-      method: request.method,
-      headers: headers,
-      body: request.body,
-      redirect: 'manual'
-    });
-    
-    let response = await fetch(proxyRequest);
-    
-    // Handle redirects by rewriting them to go through our proxy
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get('Location');
-      if (location) {
-        const newLocation = rewriteGoogleUrl(location, workerOrigin);
-        const newHeaders = new Headers(response.headers);
-        newHeaders.set('Location', newLocation);
-        return new Response(response.body, {
-          status: response.status,
-          statusText: response.statusText,
-          headers: newHeaders
-        });
-      }
-    }
-    
-    const newHeaders = new Headers(response.headers);
-    newHeaders.set('Access-Control-Allow-Origin', '*');
-    newHeaders.set('Access-Control-Allow-Methods', '*');
-    newHeaders.set('Access-Control-Allow-Headers', '*');
-    newHeaders.set('Access-Control-Allow-Credentials', 'true');
-    newHeaders.delete('Content-Security-Policy');
-    newHeaders.delete('X-Frame-Options');
-    newHeaders.delete('Frame-Options');
-    newHeaders.delete('Cross-Origin-Opener-Policy');
-    newHeaders.delete('Cross-Origin-Embedder-Policy');
-    
-    const contentType = response.headers.get('Content-Type') || '';
-    
-    // Rewrite HTML/JS content to redirect Google URLs through our proxy
-    if (contentType.includes('text/html') || contentType.includes('javascript')) {
-      let content = await response.text();
-      content = rewriteGoogleContent(content, workerOrigin);
-      
-      return new Response(content, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: newHeaders
-      });
-    }
-    
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: newHeaders
-    });
-  }
-  
-  // Rewrite a single Google URL to go through our proxy
-  function rewriteGoogleUrl(url, workerOrigin) {
-    try {
-      const parsed = new URL(url);
-      for (const domain of GOOGLE_AUTH_DOMAINS) {
-        // Check for exact match OR proper subdomain (preceded by a dot)
-        if (parsed.hostname === domain || 
-            (parsed.hostname.endsWith('.' + domain) && parsed.hostname.length > domain.length + 1)) {
-          return workerOrigin + '/gauth/' + parsed.hostname + parsed.pathname + parsed.search;
-        }
-      }
-    } catch (e) {
-      // URL parsing failed, return as-is
-    }
-    return url;
-  }
-  
-  // Pre-compiled regex patterns for URL rewriting
-  const GOOGLE_URL_PATTERNS = GOOGLE_AUTH_DOMAINS.map(domain => ({
-    domain,
-    https: new RegExp('https://' + domain.replace(/\./g, '\\.'), 'g'),
-    protocolRelative: new RegExp('(["\'])//(' + domain.replace(/\./g, '\\.') + ')', 'g')
-  }));
-
-  // Rewrite content to redirect Google URLs through proxy
-  function rewriteGoogleContent(content, workerOrigin) {
-    // Replace Google auth domain URLs with proxied versions using pre-compiled patterns
-    for (const pattern of GOOGLE_URL_PATTERNS) {
-      // Replace https://domain URLs
-      content = content.replace(pattern.https, workerOrigin + '/gauth/' + pattern.domain);
-      
-      // Replace //domain URLs (protocol-relative) with any quote type
-      content = content.replace(pattern.protocolRelative, '$1' + workerOrigin + '/gauth/' + pattern.domain);
-    }
-    return content;
-  }
-  
   async function proxyCloudMoon(request) {
     const url = new URL(request.url);
-    const workerOrigin = url.origin;
     
     // Build the target URL
     let targetURL;
@@ -208,46 +68,12 @@ addEventListener('fetch', event => {
     if (contentType.includes('text/html')) {
       let html = await response.text();
       
-      // Rewrite Google URLs to go through our proxy
-      html = rewriteGoogleContent(html, workerOrigin);
-      
       const injectionScript = `
         <script>
           (function() {
             console.log('CloudMoon Interceptor Injected');
             
-            // Store the worker origin for URL rewriting
-            const WORKER_ORIGIN = '${workerOrigin}';
-            const GOOGLE_DOMAINS = [
-              'accounts.google.com',
-              'oauth2.googleapis.com',
-              'www.googleapis.com',
-              'apis.google.com',
-              'ssl.gstatic.com',
-              'www.gstatic.com'
-            ];
-            
-            // Helper function to check if hostname matches a Google domain (exact or subdomain)
-            function isGoogleDomain(hostname, domain) {
-              return hostname === domain || 
-                     (hostname.endsWith('.' + domain) && hostname.length > domain.length + 1);
-            }
-            
-            // Helper function to rewrite Google URLs
-            function rewriteGoogleUrl(url) {
-              if (!url) return url;
-              try {
-                const parsed = new URL(url, window.location.href);
-                for (const domain of GOOGLE_DOMAINS) {
-                  if (isGoogleDomain(parsed.hostname, domain)) {
-                    return WORKER_ORIGIN + '/gauth/' + parsed.hostname + parsed.pathname + parsed.search;
-                  }
-                }
-              } catch (e) {}
-              return url;
-            }
-            
-            // Intercept window.open for games AND Google auth
+            // Intercept window.open for games
             const originalOpen = window.open;
             window.open = function(url, target, features) {
               console.log('Intercepted window.open:', url);
@@ -272,111 +98,71 @@ addEventListener('fetch', event => {
                 };
               }
               
-              // Handle Google auth URLs - redirect through proxy
-              if (url) {
-                const rewrittenUrl = rewriteGoogleUrl(url);
-                if (rewrittenUrl !== url) {
-                  console.log('Google auth URL rewritten:', rewrittenUrl);
-                  return originalOpen.call(this, rewrittenUrl, target, features);
-                }
-              }
-              
               return originalOpen.call(this, url, target, features);
             };
             
-            // Intercept fetch requests to Google
-            const originalFetch = window.fetch;
-            window.fetch = function(input, init) {
-              let url = typeof input === 'string' ? input : input.url;
-              const rewrittenUrl = rewriteGoogleUrl(url);
-              if (rewrittenUrl !== url) {
-                console.log('Fetch intercepted, rewriting:', url, '->', rewrittenUrl);
-                if (typeof input === 'string') {
-                  return originalFetch.call(this, rewrittenUrl, init);
-                } else {
-                  // When input is a Request, pass init options separately
-                  return originalFetch.call(this, rewrittenUrl, init);
+            // Hide Google Sign-In buttons and show alternative message
+            // Google OAuth doesn't work through proxies due to origin validation
+            function hideGoogleSignIn() {
+              // Add CSS to hide Google Sign-In elements
+              const style = document.createElement('style');
+              style.textContent = \`
+                /* Hide Google Sign-In button and related elements */
+                [data-client_id], 
+                .g_id_signin,
+                .gsi-material-button,
+                div[id^="g_id_"],
+                iframe[src*="accounts.google.com"],
+                iframe[src*="gsi/button"],
+                [aria-label*="Google"],
+                button[data-provider="google"],
+                .google-sign-in-button,
+                .google-login-btn {
+                  display: none !important;
                 }
-              }
-              return originalFetch.call(this, input, init);
-            };
+              \`;
+              document.head.appendChild(style);
+              
+              // Find and hide any Google Sign-In buttons that might appear dynamically
+              const observer = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                  for (const node of mutation.addedNodes) {
+                    if (node.nodeType === 1) {
+                      // Check if it's a Google Sign-In element
+                      if (node.matches && (
+                        node.matches('[data-client_id]') ||
+                        node.matches('.g_id_signin') ||
+                        node.matches('.gsi-material-button') ||
+                        node.matches('iframe[src*="accounts.google.com"]')
+                      )) {
+                        node.style.display = 'none';
+                      }
+                      // Also check children
+                      const googleElements = node.querySelectorAll && node.querySelectorAll('[data-client_id], .g_id_signin, .gsi-material-button, iframe[src*="accounts.google.com"]');
+                      if (googleElements) {
+                        googleElements.forEach(el => el.style.display = 'none');
+                      }
+                    }
+                  }
+                }
+              });
+              
+              observer.observe(document.body || document.documentElement, {
+                childList: true,
+                subtree: true
+              });
+              
+              console.log('Google Sign-In elements hidden - use email/password to sign in');
+            }
             
-            // Intercept XMLHttpRequest
-            const originalXHROpen = XMLHttpRequest.prototype.open;
-            XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
-              const rewrittenUrl = rewriteGoogleUrl(url);
-              if (rewrittenUrl !== url) {
-                console.log('XHR intercepted, rewriting:', url, '->', rewrittenUrl);
-                return originalXHROpen.call(this, method, rewrittenUrl, async, user, password);
-              }
-              return originalXHROpen.call(this, method, url, async, user, password);
-            };
+            // Run when DOM is ready
+            if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', hideGoogleSignIn);
+            } else {
+              hideGoogleSignIn();
+            }
             
-            // Intercept script loading for Google Identity Services
-            const originalCreateElement = document.createElement;
-            document.createElement = function(tagName) {
-              const element = originalCreateElement.call(this, tagName);
-              if (tagName.toLowerCase() === 'script') {
-                const originalSetAttribute = element.setAttribute.bind(element);
-                element.setAttribute = function(name, value) {
-                  if (name === 'src') {
-                    const rewrittenUrl = rewriteGoogleUrl(value);
-                    if (rewrittenUrl !== value) {
-                      console.log('Script src rewritten:', value, '->', rewrittenUrl);
-                      return originalSetAttribute(name, rewrittenUrl);
-                    }
-                  }
-                  return originalSetAttribute(name, value);
-                };
-                
-                // Also intercept direct src assignment
-                Object.defineProperty(element, 'src', {
-                  get: function() {
-                    return element.getAttribute('src');
-                  },
-                  set: function(value) {
-                    const rewrittenUrl = rewriteGoogleUrl(value);
-                    if (rewrittenUrl !== value) {
-                      console.log('Script src property rewritten:', value, '->', rewrittenUrl);
-                      element.setAttribute('src', rewrittenUrl);
-                    } else {
-                      element.setAttribute('src', value);
-                    }
-                  }
-                });
-              }
-              if (tagName.toLowerCase() === 'iframe') {
-                const originalSetAttribute = element.setAttribute.bind(element);
-                element.setAttribute = function(name, value) {
-                  if (name === 'src') {
-                    const rewrittenUrl = rewriteGoogleUrl(value);
-                    if (rewrittenUrl !== value) {
-                      console.log('Iframe src rewritten:', value, '->', rewrittenUrl);
-                      return originalSetAttribute(name, rewrittenUrl);
-                    }
-                  }
-                  return originalSetAttribute(name, value);
-                };
-                
-                Object.defineProperty(element, 'src', {
-                  get: function() {
-                    return element.getAttribute('src');
-                  },
-                  set: function(value) {
-                    const rewrittenUrl = rewriteGoogleUrl(value);
-                    if (rewrittenUrl !== value) {
-                      console.log('Iframe src property rewritten:', value, '->', rewrittenUrl);
-                      element.setAttribute('src', rewrittenUrl);
-                    } else {
-                      element.setAttribute('src', value);
-                    }
-                  }
-                });
-              }
-              return element;
-            };
-            
-            console.log('CloudMoon Google Sign-In Proxy Active');
+            console.log('CloudMoon Proxy Active');
             
           })();
         </script>
@@ -389,18 +175,6 @@ addEventListener('fetch', event => {
       }
       
       return new Response(html, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: newHeaders
-      });
-    }
-    
-    // Also rewrite JS files that might contain Google URLs
-    if (contentType.includes('javascript')) {
-      let js = await response.text();
-      js = rewriteGoogleContent(js, workerOrigin);
-      
-      return new Response(js, {
         status: response.status,
         statusText: response.statusText,
         headers: newHeaders

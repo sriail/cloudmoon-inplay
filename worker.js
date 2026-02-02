@@ -1,7 +1,21 @@
-// Cloudflare Worker - CloudMoon Proxy with Tab Cloaking
+// Cloudflare Worker - CloudMoon Proxy with Tab Cloaking and Google Sign-In Support
 addEventListener('fetch', event => {
     event.respondWith(handleRequest(event.request));
   });
+  
+  // Google domains that need to be proxied for sign-in
+  const GOOGLE_AUTH_DOMAINS = [
+    'accounts.google.com',
+    'oauth2.googleapis.com',
+    'www.googleapis.com',
+    'apis.google.com',
+    'ssl.gstatic.com',
+    'www.gstatic.com',
+    'fonts.googleapis.com',
+    'fonts.gstatic.com',
+    'lh3.googleusercontent.com',
+    'googleusercontent.com'
+  ];
   
   async function handleRequest(request) {
     const url = new URL(request.url);
@@ -13,12 +27,131 @@ addEventListener('fetch', event => {
       });
     }
     
+    // Handle Google auth proxy routes
+    if (url.pathname.startsWith('/gauth/')) {
+      return proxyGoogleAuth(request);
+    }
+    
     // Proxy everything else to CloudMoon
     return proxyCloudMoon(request);
   }
   
+  // Proxy Google authentication requests
+  async function proxyGoogleAuth(request) {
+    const url = new URL(request.url);
+    const workerOrigin = url.origin;
+    
+    // Extract the target Google URL from the path
+    // Format: /gauth/domain.com/path
+    const pathParts = url.pathname.replace('/gauth/', '').split('/');
+    const targetDomain = pathParts[0];
+    const targetPath = '/' + pathParts.slice(1).join('/') + url.search;
+    const targetURL = 'https://' + targetDomain + targetPath;
+    
+    console.log('Proxying Google Auth:', targetURL);
+    
+    const headers = new Headers(request.headers);
+    headers.set('Host', targetDomain);
+    headers.set('Origin', 'https://' + targetDomain);
+    headers.set('Referer', 'https://' + targetDomain + '/');
+    headers.delete('cf-connecting-ip');
+    headers.delete('cf-ray');
+    headers.delete('x-forwarded-proto');
+    headers.delete('x-real-ip');
+    
+    if (!headers.has('User-Agent')) {
+      headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+    }
+    
+    const proxyRequest = new Request(targetURL, {
+      method: request.method,
+      headers: headers,
+      body: request.body,
+      redirect: 'manual'
+    });
+    
+    let response = await fetch(proxyRequest);
+    
+    // Handle redirects by rewriting them to go through our proxy
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('Location');
+      if (location) {
+        const newLocation = rewriteGoogleUrl(location, workerOrigin);
+        const newHeaders = new Headers(response.headers);
+        newHeaders.set('Location', newLocation);
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: newHeaders
+        });
+      }
+    }
+    
+    const newHeaders = new Headers(response.headers);
+    newHeaders.set('Access-Control-Allow-Origin', '*');
+    newHeaders.set('Access-Control-Allow-Methods', '*');
+    newHeaders.set('Access-Control-Allow-Headers', '*');
+    newHeaders.set('Access-Control-Allow-Credentials', 'true');
+    newHeaders.delete('Content-Security-Policy');
+    newHeaders.delete('X-Frame-Options');
+    newHeaders.delete('Frame-Options');
+    newHeaders.delete('Cross-Origin-Opener-Policy');
+    newHeaders.delete('Cross-Origin-Embedder-Policy');
+    
+    const contentType = response.headers.get('Content-Type') || '';
+    
+    // Rewrite HTML/JS content to redirect Google URLs through our proxy
+    if (contentType.includes('text/html') || contentType.includes('javascript')) {
+      let content = await response.text();
+      content = rewriteGoogleContent(content, workerOrigin);
+      
+      return new Response(content, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: newHeaders
+      });
+    }
+    
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: newHeaders
+    });
+  }
+  
+  // Rewrite a single Google URL to go through our proxy
+  function rewriteGoogleUrl(url, workerOrigin) {
+    try {
+      const parsed = new URL(url);
+      for (const domain of GOOGLE_AUTH_DOMAINS) {
+        if (parsed.hostname === domain || parsed.hostname.endsWith('.' + domain)) {
+          return workerOrigin + '/gauth/' + parsed.hostname + parsed.pathname + parsed.search;
+        }
+      }
+    } catch (e) {
+      // URL parsing failed, return as-is
+    }
+    return url;
+  }
+  
+  // Rewrite content to redirect Google URLs through proxy
+  function rewriteGoogleContent(content, workerOrigin) {
+    // Replace Google auth domain URLs with proxied versions
+    for (const domain of GOOGLE_AUTH_DOMAINS) {
+      // Replace https://domain URLs
+      const httpsPattern = new RegExp('https://' + domain.replace(/\./g, '\\.'), 'g');
+      content = content.replace(httpsPattern, workerOrigin + '/gauth/' + domain);
+      
+      // Replace //domain URLs (protocol-relative)
+      const protocolRelPattern = new RegExp('"//' + domain.replace(/\./g, '\\.'), 'g');
+      content = content.replace(protocolRelPattern, '"' + workerOrigin + '/gauth/' + domain);
+    }
+    return content;
+  }
+  
   async function proxyCloudMoon(request) {
     const url = new URL(request.url);
+    const workerOrigin = url.origin;
     
     // Build the target URL
     let targetURL;
@@ -60,21 +193,53 @@ addEventListener('fetch', event => {
     newHeaders.delete('Content-Security-Policy');
     newHeaders.delete('X-Frame-Options');
     newHeaders.delete('Frame-Options');
+    newHeaders.delete('Cross-Origin-Opener-Policy');
+    newHeaders.delete('Cross-Origin-Embedder-Policy');
     
     const contentType = response.headers.get('Content-Type') || '';
     
     if (contentType.includes('text/html')) {
       let html = await response.text();
       
+      // Rewrite Google URLs to go through our proxy
+      html = rewriteGoogleContent(html, workerOrigin);
+      
       const injectionScript = `
         <script>
           (function() {
             console.log('CloudMoon Interceptor Injected');
             
+            // Store the worker origin for URL rewriting
+            const WORKER_ORIGIN = '${workerOrigin}';
+            const GOOGLE_DOMAINS = [
+              'accounts.google.com',
+              'oauth2.googleapis.com',
+              'www.googleapis.com',
+              'apis.google.com',
+              'ssl.gstatic.com',
+              'www.gstatic.com'
+            ];
+            
+            // Helper function to rewrite Google URLs
+            function rewriteGoogleUrl(url) {
+              if (!url) return url;
+              try {
+                const parsed = new URL(url, window.location.href);
+                for (const domain of GOOGLE_DOMAINS) {
+                  if (parsed.hostname === domain || parsed.hostname.endsWith('.' + domain)) {
+                    return WORKER_ORIGIN + '/gauth/' + parsed.hostname + parsed.pathname + parsed.search;
+                  }
+                }
+              } catch (e) {}
+              return url;
+            }
+            
+            // Intercept window.open for games AND Google auth
             const originalOpen = window.open;
             window.open = function(url, target, features) {
               console.log('Intercepted window.open:', url);
               
+              // Handle game URLs
               if (url && url.includes('run-site')) {
                 console.log('Game URL detected!');
                 
@@ -94,8 +259,110 @@ addEventListener('fetch', event => {
                 };
               }
               
+              // Handle Google auth URLs - redirect through proxy
+              if (url) {
+                const rewrittenUrl = rewriteGoogleUrl(url);
+                if (rewrittenUrl !== url) {
+                  console.log('Google auth URL rewritten:', rewrittenUrl);
+                  return originalOpen.call(this, rewrittenUrl, target, features);
+                }
+              }
+              
               return originalOpen.call(this, url, target, features);
             };
+            
+            // Intercept fetch requests to Google
+            const originalFetch = window.fetch;
+            window.fetch = function(input, init) {
+              let url = typeof input === 'string' ? input : input.url;
+              const rewrittenUrl = rewriteGoogleUrl(url);
+              if (rewrittenUrl !== url) {
+                console.log('Fetch intercepted, rewriting:', url, '->', rewrittenUrl);
+                if (typeof input === 'string') {
+                  return originalFetch.call(this, rewrittenUrl, init);
+                } else {
+                  return originalFetch.call(this, new Request(rewrittenUrl, input), init);
+                }
+              }
+              return originalFetch.call(this, input, init);
+            };
+            
+            // Intercept XMLHttpRequest
+            const originalXHROpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
+              const rewrittenUrl = rewriteGoogleUrl(url);
+              if (rewrittenUrl !== url) {
+                console.log('XHR intercepted, rewriting:', url, '->', rewrittenUrl);
+                return originalXHROpen.call(this, method, rewrittenUrl, async, user, password);
+              }
+              return originalXHROpen.call(this, method, url, async, user, password);
+            };
+            
+            // Intercept script loading for Google Identity Services
+            const originalCreateElement = document.createElement;
+            document.createElement = function(tagName) {
+              const element = originalCreateElement.call(this, tagName);
+              if (tagName.toLowerCase() === 'script') {
+                const originalSetAttribute = element.setAttribute.bind(element);
+                element.setAttribute = function(name, value) {
+                  if (name === 'src') {
+                    const rewrittenUrl = rewriteGoogleUrl(value);
+                    if (rewrittenUrl !== value) {
+                      console.log('Script src rewritten:', value, '->', rewrittenUrl);
+                      return originalSetAttribute(name, rewrittenUrl);
+                    }
+                  }
+                  return originalSetAttribute(name, value);
+                };
+                
+                // Also intercept direct src assignment
+                Object.defineProperty(element, 'src', {
+                  get: function() {
+                    return element.getAttribute('src');
+                  },
+                  set: function(value) {
+                    const rewrittenUrl = rewriteGoogleUrl(value);
+                    if (rewrittenUrl !== value) {
+                      console.log('Script src property rewritten:', value, '->', rewrittenUrl);
+                      element.setAttribute('src', rewrittenUrl);
+                    } else {
+                      element.setAttribute('src', value);
+                    }
+                  }
+                });
+              }
+              if (tagName.toLowerCase() === 'iframe') {
+                const originalSetAttribute = element.setAttribute.bind(element);
+                element.setAttribute = function(name, value) {
+                  if (name === 'src') {
+                    const rewrittenUrl = rewriteGoogleUrl(value);
+                    if (rewrittenUrl !== value) {
+                      console.log('Iframe src rewritten:', value, '->', rewrittenUrl);
+                      return originalSetAttribute(name, rewrittenUrl);
+                    }
+                  }
+                  return originalSetAttribute(name, value);
+                };
+                
+                Object.defineProperty(element, 'src', {
+                  get: function() {
+                    return element.getAttribute('src');
+                  },
+                  set: function(value) {
+                    const rewrittenUrl = rewriteGoogleUrl(value);
+                    if (rewrittenUrl !== value) {
+                      console.log('Iframe src property rewritten:', value, '->', rewrittenUrl);
+                      element.setAttribute('src', rewrittenUrl);
+                    } else {
+                      element.setAttribute('src', value);
+                    }
+                  }
+                });
+              }
+              return element;
+            };
+            
+            console.log('CloudMoon Google Sign-In Proxy Active');
             
           })();
         </script>
@@ -108,6 +375,18 @@ addEventListener('fetch', event => {
       }
       
       return new Response(html, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: newHeaders
+      });
+    }
+    
+    // Also rewrite JS files that might contain Google URLs
+    if (contentType.includes('javascript')) {
+      let js = await response.text();
+      js = rewriteGoogleContent(js, workerOrigin);
+      
+      return new Response(js, {
         status: response.status,
         statusText: response.statusText,
         headers: newHeaders

@@ -71,18 +71,94 @@ addEventListener('fetch', event => {
           (function() {
             console.log('CloudMoon Interceptor Injected');
             
+            // Helper function to check if URL is Google Auth related
+            function isGoogleAuthUrl(url) {
+              if (!url) return false;
+              const googleAuthPatterns = [
+                'accounts.google.com',
+                'googleapis.com/identitytoolkit',
+                'securetoken.googleapis.com',
+                'www.googleapis.com/oauth',
+                'oauth2.googleapis.com',
+                'google.com/signin',
+                'google.com/o/oauth'
+              ];
+              return googleAuthPatterns.some(pattern => url.includes(pattern));
+            }
+            
+            // Helper function to de-proxy a URL
+            function deProxyUrl(url) {
+              if (!url) return url;
+              
+              // Check if it's a proxied URL (contains /proxy/)
+              const proxyMatch = url.match(/\\/proxy\\/(.+)/);
+              if (proxyMatch) {
+                try {
+                  return decodeURIComponent(proxyMatch[1]);
+                } catch (e) {
+                  console.log('Failed to decode proxy URL:', e);
+                  return url;
+                }
+              }
+              
+              // Check if the URL has our worker domain but points to Google
+              const workerOrigin = window.location.origin;
+              if (url.startsWith(workerOrigin)) {
+                // Try to extract the actual Google URL from the path
+                const pathMatch = url.replace(workerOrigin, '');
+                if (isGoogleAuthUrl(pathMatch)) {
+                  // Reconstruct as https URL
+                  const cleanPath = pathMatch.startsWith('/') ? pathMatch.slice(1) : pathMatch;
+                  return 'https://' + cleanPath;
+                }
+              }
+              
+              return url;
+            }
+            
+            // Helper to safely post message to parent
+            function postToParent(message) {
+              if (window.parent && window.parent !== window) {
+                // Use same origin since the proxy parent page is on the same origin
+                window.parent.postMessage(message, window.location.origin);
+              }
+            }
+            
             const originalOpen = window.open;
             window.open = function(url, target, features) {
               console.log('Intercepted window.open:', url);
+              
+              // Check for Google Auth URLs - de-proxy and open in separate window
+              const deProxiedUrl = deProxyUrl(url);
+              if (isGoogleAuthUrl(deProxiedUrl)) {
+                console.log('Google Auth URL detected! Opening in separate window:', deProxiedUrl);
+                
+                // Send message to parent to handle Google Auth in new window
+                if (window.parent && window.parent !== window) {
+                  postToParent({
+                    type: 'GOOGLE_AUTH',
+                    url: deProxiedUrl
+                  });
+                } else {
+                  // Fallback: open directly if no parent
+                  return originalOpen.call(this, deProxiedUrl, '_blank', features);
+                }
+                
+                return {
+                  closed: false,
+                  close: () => {},
+                  focus: () => {}
+                };
+              }
               
               if (url && url.includes('run-site')) {
                 console.log('Game URL detected!');
                 
                 if (window.parent && window.parent !== window) {
-                  window.parent.postMessage({
+                  postToParent({
                     type: 'LOAD_GAME',
                     url: url
-                  }, '*');
+                  });
                 } else {
                   window.location.href = url;
                 }
@@ -96,6 +172,60 @@ addEventListener('fetch', event => {
               
               return originalOpen.call(this, url, target, features);
             };
+            
+            // Set up event listeners when DOM is ready
+            function setupEventListeners() {
+              // Intercept link clicks that might go to Google Auth
+              document.addEventListener('click', function(e) {
+                const link = e.target.closest('a');
+                if (link && link.href) {
+                  const deProxiedUrl = deProxyUrl(link.href);
+                  if (isGoogleAuthUrl(deProxiedUrl)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Google Auth link clicked! Opening in separate window:', deProxiedUrl);
+                    
+                    if (window.parent && window.parent !== window) {
+                      postToParent({
+                        type: 'GOOGLE_AUTH',
+                        url: deProxiedUrl
+                      });
+                    } else {
+                      window.open(deProxiedUrl, '_blank');
+                    }
+                  }
+                }
+              }, true);
+              
+              // Intercept form submissions to Google Auth
+              document.addEventListener('submit', function(e) {
+                const form = e.target;
+                if (form && form.action) {
+                  const deProxiedUrl = deProxyUrl(form.action);
+                  if (isGoogleAuthUrl(deProxiedUrl)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Google Auth form detected! Opening in separate window:', deProxiedUrl);
+                    
+                    if (window.parent && window.parent !== window) {
+                      postToParent({
+                        type: 'GOOGLE_AUTH',
+                        url: deProxiedUrl
+                      });
+                    } else {
+                      window.open(deProxiedUrl, '_blank');
+                    }
+                  }
+                }
+              }, true);
+            }
+            
+            // Set up event listeners when DOM is ready
+            if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', setupEventListeners);
+            } else {
+              setupEventListeners();
+            }
             
           })();
         </script>
@@ -433,6 +563,28 @@ addEventListener('fetch', event => {
                   const gameUrl = event.data.url;
                   console.log('Game URL received:', gameUrl);
                   loadGame(gameUrl);
+              }
+              
+              // Handle Google Auth URLs - open in separate window (not proxied)
+              if (event.data && event.data.type === 'GOOGLE_AUTH') {
+                  const authUrl = event.data.url;
+                  console.log('%c Google Auth URL received - opening in separate window', 'color: #f59e0b; font-weight: bold;');
+                  console.log('Auth URL:', authUrl);
+                  showToast('Opening Google Sign-In in new window...');
+                  
+                  // Open Google Auth in a separate popup window (not proxied)
+                  const authWindow = window.open(
+                      authUrl,
+                      'GoogleAuth',
+                      'width=500,height=600,menubar=no,toolbar=no,location=yes,status=yes'
+                  );
+                  
+                  if (authWindow) {
+                      authWindow.focus();
+                  } else {
+                      showToast('Popup blocked! Please allow popups for Google Sign-In.');
+                      console.warn('Google Auth popup was blocked. Please allow popups.');
+                  }
               }
           });
           

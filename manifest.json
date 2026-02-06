@@ -1,0 +1,35 @@
+{
+  "name": "CloudMoon InPlay",
+  "short_name": "CloudMoon",
+  "description": "Play Roblox, Fortnite, Call of Duty Mobile, Delta Force, and more in your browser",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#2d2d2d",
+  "orientation": "any",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["games", "entertainment"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Open CloudMoon",
+      "short_name": "Play",
+      "description": "Open CloudMoon gaming library",
+      "url": "/",
+      "icons": [
+        {
+          "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ]
+}

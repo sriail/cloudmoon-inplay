@@ -702,6 +702,8 @@ self.addEventListener('install', (event) => {
       console.log('[ServiceWorker] Caching app shell');
       return cache.addAll([
         '/',
+        '/manifest.json',
+        '/sw.js'
       ]);
     }).then(() => {
       return self.skipWaiting();
@@ -730,8 +732,9 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - network first, fallback to cache
 self.addEventListener('fetch', (event) => {
-  // Skip cross-origin requests
+  // Skip cross-origin requests - let browser handle them
   if (!event.request.url.startsWith(self.location.origin)) {
+    event.respondWith(fetch(event.request));
     return;
   }
 

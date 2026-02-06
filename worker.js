@@ -905,7 +905,6 @@ function getMainHTML() {
         document.addEventListener('fullscreenchange', function() {
             const navBar = document.getElementById('header');
             if (!document.fullscreenElement) {
-                navBar.style.removeProperty('display');
                 navBar.style.display = 'flex';
             }
         });

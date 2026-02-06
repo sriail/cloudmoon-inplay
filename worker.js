@@ -13,6 +13,23 @@ async function handleRequest(request) {
     });
   }
   
+  // Serve manifest.json for PWA
+  if (url.pathname === '/manifest.json') {
+    return new Response(getManifest(), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+  
+  // Serve service worker for PWA
+  if (url.pathname === '/sw.js') {
+    return new Response(getServiceWorker(), {
+      headers: { 
+        'Content-Type': 'application/javascript',
+        'Service-Worker-Allowed': '/'
+      }
+    });
+  }
+  
   // Proxy everything else to CloudMoon
   return proxyCloudMoon(request);
 }
@@ -177,6 +194,17 @@ function getMainHTML() {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CloudMoon InPlay</title>
+    <meta name="description" content="Play Roblox, Fortnite, Call of Duty Mobile, Delta Force, and more in your browser">
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#2d2d2d">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="CloudMoon">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>">
+    
     <link rel="icon" id="favicon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>">
     <style>
         * {
@@ -575,7 +603,174 @@ function getMainHTML() {
         console.log('%c CloudMoon Proxy Active', 'color: #667eea; font-size: 18px; font-weight: bold;');
         console.log('%c GoGuardian Bypass: CodeSandbox Method', 'color: #10b981; font-size: 14px; font-weight: bold;');
         console.log('%c Shadow DOM + Smart Sandbox + Full Permissions', 'color: #10b981; font-size: 12px;');
+        
+        // Register Service Worker for PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then((registration) => {
+                        console.log('%c PWA Service Worker registered', 'color: #667eea; font-weight: bold;');
+                        
+                        // Check for updates periodically
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    console.log('%c New version available!', 'color: #10b981; font-weight: bold;');
+                                }
+                            });
+                        });
+                    })
+                    .catch((error) => {
+                        console.log('Service Worker registration failed:', error);
+                    });
+            });
+        }
+        
+        // PWA Install prompt
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            console.log('%c PWA installable!', 'color: #667eea; font-weight: bold;');
+            
+            // Optionally show install button after 5 seconds
+            setTimeout(() => {
+                if (deferredPrompt && !window.matchMedia('(display-mode: standalone)').matches) {
+                    showToast('Install CloudMoon as an app!');
+                }
+            }, 5000);
+        });
+        
+        window.addEventListener('appinstalled', () => {
+            console.log('%c PWA installed!', 'color: #10b981; font-weight: bold;');
+            deferredPrompt = null;
+        });
     </script>
 </body>
 </html>`;
+}
+
+function getManifest() {
+  return JSON.stringify({
+    "name": "CloudMoon InPlay",
+    "short_name": "CloudMoon",
+    "description": "Play Roblox, Fortnite, Call of Duty Mobile, Delta Force, and more in your browser",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0d1117",
+    "theme_color": "#2d2d2d",
+    "orientation": "any",
+    "scope": "/",
+    "icons": [
+      {
+        "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>",
+        "sizes": "512x512",
+        "type": "image/svg+xml",
+        "purpose": "any maskable"
+      }
+    ],
+    "categories": ["games", "entertainment"],
+    "screenshots": [],
+    "shortcuts": [
+      {
+        "name": "Open CloudMoon",
+        "short_name": "Play",
+        "description": "Open CloudMoon gaming library",
+        "url": "/",
+        "icons": [
+          {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>",
+            "sizes": "96x96"
+          }
+        ]
+      }
+    ]
+  });
+}
+
+function getServiceWorker() {
+  return `// CloudMoon InPlay Service Worker
+const CACHE_NAME = 'cloudmoon-v1';
+const RUNTIME_CACHE = 'cloudmoon-runtime';
+
+// Install event - cache essential resources
+self.addEventListener('install', (event) => {
+  console.log('[ServiceWorker] Install');
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      console.log('[ServiceWorker] Caching app shell');
+      return cache.addAll([
+        '/',
+        '/manifest.json',
+        '/sw.js'
+      ]);
+    }).then(() => {
+      return self.skipWaiting();
+    })
+  );
+});
+
+// Activate event - clean up old caches
+self.addEventListener('activate', (event) => {
+  console.log('[ServiceWorker] Activate');
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE) {
+            console.log('[ServiceWorker] Removing old cache', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    }).then(() => {
+      return self.clients.claim();
+    })
+  );
+});
+
+// Fetch event - network first, fallback to cache
+self.addEventListener('fetch', (event) => {
+  // Skip cross-origin requests - let browser handle them
+  if (!event.request.url.startsWith(self.location.origin)) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        // If response is valid, clone it and cache it
+        if (response && response.status === 200) {
+          const responseToCache = response.clone();
+          caches.open(RUNTIME_CACHE).then((cache) => {
+            cache.put(event.request, responseToCache);
+          }).catch((error) => {
+            console.error('[ServiceWorker] Cache put error:', error);
+          });
+        }
+        return response;
+      })
+      .catch(() => {
+        // If network fails, try to serve from cache
+        return caches.match(event.request).then((response) => {
+          if (response) {
+            return response;
+          }
+          // If not in cache, return a basic offline page
+          if (event.request.mode === 'navigate') {
+            return caches.match('/');
+          }
+        });
+      })
+  );
+});
+
+// Handle messages from clients
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});`;
 }

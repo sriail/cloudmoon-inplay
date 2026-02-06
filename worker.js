@@ -743,6 +743,8 @@ self.addEventListener('fetch', (event) => {
           const responseToCache = response.clone();
           caches.open(RUNTIME_CACHE).then((cache) => {
             cache.put(event.request, responseToCache);
+          }).catch((error) => {
+            console.error('[ServiceWorker] Cache put error:', error);
           });
         }
         return response;

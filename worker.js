@@ -348,13 +348,13 @@ function getMainHTML() {
         
         #settingsPanel {
             background: #1e1e1e;
-            border-radius: 12px;
-            padding: 24px;
-            width: 380px;
+            border-radius: 24px;
+            padding: 28px;
+            width: 400px;
             max-height: 85vh;
             overflow-y: auto;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-            border: 1px solid #3a3a3a;
+            box-shadow: 0 12px 48px rgba(0,0,0,0.6);
+            border: 1px solid #444;
         }
         
         .settingsHeader {
@@ -455,10 +455,10 @@ function getMainHTML() {
         
         .settingInput {
             width: 100%;
-            padding: 10px 12px;
+            padding: 12px 16px;
             background: #2a2a2a;
             border: 1px solid #404040;
-            border-radius: 6px;
+            border-radius: 12px;
             color: #e0e0e0;
             font-size: 13px;
         }
@@ -470,10 +470,10 @@ function getMainHTML() {
         
         .settingSelect {
             width: 100%;
-            padding: 10px 12px;
+            padding: 12px 16px;
             background: #2a2a2a;
             border: 1px solid #404040;
-            border-radius: 6px;
+            border-radius: 12px;
             color: #e0e0e0;
             font-size: 13px;
             cursor: pointer;
@@ -482,6 +482,7 @@ function getMainHTML() {
         .panicBtn {
             background: #dc3545 !important;
             color: white !important;
+            border-radius: 8px !important;
         }
         
         .panicBtn:hover {
@@ -630,6 +631,9 @@ function getMainHTML() {
         let currentIframe = null;
         let isCloaked = false;
         
+        const cmDefaultTitle = 'CloudMoon InPlay';
+        const cmDefaultIcon = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>";
+        
         const appConfig = {
             muteNotifs: false,
             autoHideNav: false,
@@ -644,7 +648,7 @@ function getMainHTML() {
             classroom: { title: 'Classes', icon: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAA7EAAAOxAGVKw4bAAADW0lEQVRYhb2XT0hUURTGf+fNm+bVNP4ZxRhKAxeVBLYoaBOEEkTQpk0EbVpEELRo1aKgRYQtItrUKqJ/i6BVRBCUQYsWYf9QMwoz0cxCZ3TmzX1vbgtnHI3RmXl64MPLvY9zv3vOueee71F+RMvuQ/d2CIwClh48WN/98U0+TwVA6e17dwM3gb1Axt8FjgEnwnqmNo9n/xdA6Z1HTUAncAzY5gMAnAL6gMOSqRsA7PkuTu+9d3eBl8BeYOs6q54CuoCj3hON5yXbsI6HL4BbwGHW//gAXcBR741G5QdwyJDyYpAgmNz0VztTqD87Zt7+vBiMbKC0vPZc4XmJf8d0z0pP/tPYr4s3PgwvADcAbxOxXoCqc9c3FZ9dHAcmCtWuO97w8q3+H6N/D3WlXqSmawl6OoFzQAl/SVXHh9oj/UOnL4HSpF6JPBGAW8Bp4B5wsEi+sxnoTRpgKzBayHj92r0twFRBv+cBFHi4kZPtCthRACtJAQSwOQGAwvV8IMkABjBlLQFYOgmAEdsaQBpbBEsCUDlgpwFMJ+RYAL6XAnCiWMFCfhqoAFbfibDzAIMvB4ZfFwigb8EGLnjPNw54zzU2A0PeC00HclXCRd+QUur3Pdu/tqkXwLNc7TQ1bU8AXT//qbDgfk9K5fKqp+E7sL+qqvofVYAL7nWnMTqC68D9X1Wkp+EHcGD1fSXi+/U0HAQe+SXIC59cZAA+/noBYlTPtdYnADDvvdCcD4C+S/feAH1/2P8ZePSrHf4OQHe+AJxwO9sTcFt+L5ALINfXuqTUMeBbvu6bC2AOOJHv8/vWE61jgj0J/AWvJz4Am8D5YgAorxjXfkD6/2M6rwnvhaZ2XdmGd+4HgZ68pJ/sePluEBjxnm9auw82HUCpu/eUUk/x++K/dsSGx/3fDrjgTM8SrWZA+f05rydaFwAclVx9T96K6PW0PZBE9fy67uN8vhHlx5t8Zyh83vwL5V+RTBF9wWy4AAC+t1rPAyfxu9S/WgC4o5R6opXeBNz0u9l15Xvjhc/yBYgAAMGU7/dRG1Dpr/8B+BLoO9yzYzp4f7MnXxPOC0Cp1s5ub5bQHlyAemCHP14KfAD6J/SJ5uDtpc+FeP8E0sLYXdZbKF8AAAAASUVORK5CYII=' },
             drive: { title: 'My Drive - Google Drive', icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 87.3 78"><path fill="%230066DA" d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L27.5 52.55H0c0 1.55.4 3.1 1.2 4.5l5.4 9.8z"/><path fill="%0000F" d="M43.65 25.55L29.9 0c-1.35.8-2.5 1.9-3.3 3.3L1.2 47.35c-.8 1.4-1.2 2.95-1.2 4.5h27.5l16.15-26.3z"/><path fill="%0000F" d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.85L73.55 76.8z"/><path fill="%0000F" d="M43.65 25.55L57.4 0c-1.35-.8-2.9-1.2-4.5-1.2H34.4c-1.6 0-3.15.45-4.5 1.2l13.75 25.55z"/><path fill="%000F" d="M59.8 52.55H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2L59.8 52.55z"/><path fill="%0000F" d="M73.4 26.5L57.4 0c-.8 1.4-1.95 2.5-3.3 3.3l-26.4 45.9 16.15 26.35h27.5c0-1.55-.4-3.1-1.2-4.5L55.5 52.55l17.9-26.05z"/></svg>' },
             docs: { title: 'Untitled document - Google Docs', icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path fill="%234285F4" d="M29 4H12c-2.2 0-4 1.8-4 4v32c0 2.2 1.8 4 4 4h24c2.2 0 4-1.8 4-4V15L29 4z"/><path fill="%23A1C2FA" d="M29 4v11h11z"/><path fill="%23fff" d="M14 18h20v2H14zm0 4h20v2H14zm0 4h20v2H14zm0 4h14v2H14z"/></svg>' },
-            none: { title: originalTitle, icon: originalFavicon }
+            none: { title: cmDefaultTitle, icon: cmDefaultIcon }
         };
         
         function initConfig() {
@@ -722,14 +726,6 @@ function getMainHTML() {
         
         initConfig();
         
-        // Original title and favicon
-        const originalTitle = 'CloudMoon InPlay';
-        const originalFavicon = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>";
-        
-        // Google Classroom cloak
-        const cloakedTitle = 'Classes';
-        const cloakedFavicon = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAA7EAAAOxAGVKw4bAAADW0lEQVRYhb2XT0hUURTGf+fNm+bVNP4ZxRhKAxeVBLYoaBOEEkTQpk0EbVpEELRo1aKgRYQtItrUKqJ/i6BVRBCUQYsWYf9QMwoz0cxCZ3TmzX1vbgtnHI3RmXl64MPLvY9zv3vOueee71F+RMvuQ/d2CIwClh48WN/98U0+TwVA6e17dwM3gb1Axt8FjgEnwnqmNo9n/xdA6Z1HTUAncAzY5gMAnAL6gMOSqRsA7PkuTu+9d3eBl8BeYOs6q54CuoCj3hON5yXbsI6HL4BbwGHW//gAXcBR741G5QdwyJDyYpAgmNz0VztTqD87Zt7+vBiMbKC0vPZc4XmJf8d0z0pP/tPYr4s3PgwvADcAbxOxXoCqc9c3FZ9dHAcmCtWuO97w8q3+H6N/D3WlXqSmawl6OoFzQAl/SVXHh9oj/UOnL4HSpF6JPBGAW8Bp4B5wsEi+sxnoTRpgKzBayHj92r0twFRBv+cBFHi4kZPtCthRACtJAQSwOQGAwvV8IMkABjBlLQFYOgmAEdsaQBpbBEsCUDlgpwFMJ+RYAL6XAnCiWMFCfhqoAFbfibDzAIMvB4ZfFwigb8EGLnjPNw54zzU2A0PeC00HclXCRd+QUur3Pdu/tqkXwLNc7TQ1bU8AXT//qbDgfk9K5fKqp+E7sL+qqvofVYAL7nWnMTqC68D9X1Wkp+EHcGD1fSXi+/U0HAQe+SXIC59cZAA+/noBYlTPtdYnADDvvdCcD4C+S/feAH1/2P8ZePSrHf4OQHe+AJxwO9sTcFt+L5ALINfXuqTUMeBbvu6bC2AOOJHv8/vWE61jgj0J/AWvJz4Am8D5YgAorxjXfkD6/2M6rwnvhaZ2XdmGd+4HgZ68pJ/sePluEBjxnm9auw82HUCpu/eUUk/x++K/dsSGx/3fDrjgTM8SrWZA+f05rydaFwAclVx9T96K6PW0PZBE9fy67uN8vhHlx5t8Zyh83vwL5V+RTBF9wWy4AAC+t1rPAyfxu9S/WgC4o5R6opXeBNz0u9l15Xvjhc/yBYgAAMGU7/dRG1Dpr/8B+BLoO9yzYzp4f7MnXxPOC0Cp1s5ub5bQHlyAemCHP14KfAD6J/SJ5uDtpc+FeP8E0sLYXdZbKF8AAAAASUVORK5CYII=';
-        
         const SANDBOX_HOME = 'allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-downloads allow-pointer-lock allow-top-navigation-by-user-activation';
         const SANDBOX_GAME = 'allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-downloads allow-pointer-lock allow-top-navigation-by-user-activation';
         const ALLOW_PERMISSIONS = 'accelerometer; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; clipboard-read; clipboard-write; xr-spatial-tracking; gamepad';
@@ -745,8 +741,8 @@ function getMainHTML() {
                 tabCloakBtn.classList.add('active');
                 showToast('Tab disguised');
             } else {
-                document.title = originalTitle;
-                document.getElementById('favicon').href = originalFavicon;
+                document.title = cmDefaultTitle;
+                document.getElementById('favicon').href = cmDefaultIcon;
                 tabCloakBtn.classList.remove('active');
                 showToast('Disguise removed');
             }
@@ -895,21 +891,22 @@ function getMainHTML() {
         }
         
         function toggleFullscreen() {
-            const header = document.getElementById('header');
+            const navBar = document.getElementById('header');
             
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
-                header.style.display = 'none';
+                navBar.style.setProperty('display', 'none', 'important');
             } else {
                 document.exitFullscreen();
-                header.style.display = 'flex';
+                navBar.style.setProperty('display', 'flex', 'important');
             }
         }
         
-        document.addEventListener('fullscreenchange', () => {
-            const header = document.getElementById('header');
+        document.addEventListener('fullscreenchange', function() {
+            const navBar = document.getElementById('header');
             if (!document.fullscreenElement) {
-                header.style.display = 'flex';
+                navBar.style.removeProperty('display');
+                navBar.style.display = 'flex';
             }
         });
         
